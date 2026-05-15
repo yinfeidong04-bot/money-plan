@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>200万买车计划 - 可视化保存版</title>
+    <title>200万买车计划 - 秒级保存版</title>
     <!-- 引入 Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
@@ -64,12 +64,10 @@
             
             <!-- 顶栏操作区：重置 & 可视化保存状态 -->
             <div class="absolute top-3 right-3 flex items-center space-x-2">
-                <!-- 保存状态指示器 -->
                 <div id="save-status-indicator" class="flex items-center bg-white/10 backdrop-blur-sm px-2 py-1 rounded text-[10px] text-indigo-200 transition-all duration-300">
                     <i class="fas fa-cloud-check mr-1 text-green-400" id="status-icon"></i>
                     <span id="status-text">已保存</span>
                 </div>
-                <!-- 重置按钮 -->
                 <button onclick="resetData()" class="text-indigo-300 hover:text-white transition text-[10px] flex items-center bg-white/10 backdrop-blur-sm px-2 py-1 rounded">
                     <i class="fas fa-redo-alt mr-1"></i>重置
                 </button>
@@ -83,7 +81,7 @@
             </div>
             
             <div id="summary-panel" class="bg-white/10 backdrop-blur-md rounded-xl p-3 border border-white/20 mt-3">
-                <p id="summary-text" class="text-sm font-medium text-yellow-100">顶住压力，向 200 万进发...</p>
+                <p id="summary-text" class="text-sm font-medium text-yellow-100">输入数据，系统会【毫秒级】自动保存</p>
                 <div id="summary-highlight" class="text-lg font-bold text-yellow-300 mt-1 hidden">
                     🎉 预计在 <span id="target-month-display" class="bg-yellow-400 text-yellow-900 px-2 py-0.5 rounded ml-1 mr-1"></span> 喜提爱车！
                 </div>
@@ -183,7 +181,7 @@
             <!-- 4. 日历时间轴区域 -->
             <div class="mt-8">
                 <h3 class="text-sm font-bold text-indigo-700 uppercase mb-2 ml-1 flex items-center justify-between">
-                    <span><i class="far fa-calendar-alt mr-2"></i> 时间轴 (含动态房租)</span>
+                    <span><i class="far fa-calendar-alt mr-2"></i> 时间轴推演</span>
                     <span class="text-[10px] bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded font-normal">已含奖学金 10万</span>
                 </h3>
 
@@ -200,8 +198,10 @@
         </div>
     </div>
 
+    <!-- 最核心的脚本部分，处理缓存读写 -->
     <script>
-        const STORAGE_KEY = 'money_plan_data_v3';
+        // 更换了一个全新的存储名字，防止和之前错误的数据冲突
+        const STORAGE_KEY = 'money_plan_app_v4';
         
         const FIXED_SCHOLARSHIP = 100000;
         const SAFETY_LINE = 1000000; 
@@ -231,56 +231,34 @@
         const startMonth = new Date().getMonth() + 1; 
 
         // ==========================================
-        // 可视化防抖保存逻辑
+        // 【核心更新】秒级立刻保存机制 (不等待！)
         // ==========================================
-        let debounceSaveTimer = null;
-        let isEditing = false;
+        let uiStatusTimer = null;
 
-        function setStatus(state) {
-            const icon = document.getElementById('status-icon');
-            const text = document.getElementById('status-text');
-            const indicator = document.getElementById('save-status-indicator');
-            
-            if (state === 'saving') {
-                icon.className = 'fas fa-circle-notch fa-spin mr-1 text-indigo-300';
-                text.innerText = '同步中...';
-                text.className = 'text-indigo-200';
-                indicator.classList.remove('bg-green-500/20');
-            } else if (state === 'saved') {
-                icon.className = 'fas fa-check-circle mr-1 text-green-400';
-                text.innerText = '已保存';
-                text.className = 'text-green-300 font-bold';
-                indicator.classList.add('bg-green-500/20');
-                
-                // 2秒后恢复默认平静状态
-                setTimeout(() => {
-                    if(!isEditing) setStatus('idle');
-                }, 2000);
-            } else if (state === 'idle') {
-                icon.className = 'fas fa-cloud-check mr-1 text-indigo-400 opacity-70';
-                text.innerText = '已同步';
-                text.className = 'text-indigo-300 opacity-70 font-normal';
-                indicator.classList.remove('bg-green-500/20');
-            }
-        }
-
-        function scheduleSave() {
-            isEditing = true;
-            setStatus('saving');
-            
-            clearTimeout(debounceSaveTimer);
-            debounceSaveTimer = setTimeout(() => {
-                isEditing = false;
-                performActualSave();
-            }, 600); // 停止操作 600ms 后执行保存
-        }
-
-        function performActualSave() {
+        function performInstantSave() {
+            // 1. 毫秒级直接写入本地存储，不给意外刷新留任何机会
             const dataToSave = {
                 values, monthCount, partTimeIncomes, specialExpenses, movingExpenses, monthRents
             };
             localStorage.setItem(STORAGE_KEY, JSON.stringify(dataToSave));
-            setStatus('saved');
+
+            // 2. 只有视觉图标做一个模拟的同步动画，不影响真实写入速度
+            const icon = document.getElementById('status-icon');
+            const text = document.getElementById('status-text');
+            const indicator = document.getElementById('save-status-indicator');
+            
+            icon.className = 'fas fa-circle-notch fa-spin mr-1 text-indigo-300';
+            text.innerText = '同步中...';
+            text.className = 'text-indigo-200';
+            indicator.classList.remove('bg-green-500/20');
+            
+            clearTimeout(uiStatusTimer);
+            uiStatusTimer = setTimeout(() => {
+                icon.className = 'fas fa-check-circle mr-1 text-green-400';
+                text.innerText = '已保存';
+                text.className = 'text-green-300 font-bold';
+                indicator.classList.add('bg-green-500/20');
+            }, 300); // 假装同步了0.3秒
         }
 
         // ==========================================
@@ -305,7 +283,7 @@
         }
 
         function resetData() {
-            if (confirm("确定要清空所有数据并恢复初始默认值吗？")) {
+            if (confirm("确定要清空所有记录，重置为出厂数据吗？")) {
                 localStorage.removeItem(STORAGE_KEY);
                 location.reload();
             }
@@ -320,7 +298,6 @@
                 specialExpenses = new Array(monthCount).fill(0);
                 movingExpenses = new Array(monthCount).fill(0);
                 monthRents = new Array(monthCount).fill(values.rent);
-                
                 if (monthCount > 6) specialExpenses[6] = 330000;
             }
 
@@ -361,7 +338,6 @@
 
             renderTimelineUI();
             calculateTimeline();
-            setStatus('idle'); // 初始化显示为就绪
         }
 
         function getYearMonth(index) {
@@ -632,12 +608,12 @@
                 if (currentCash < SAFETY_LINE) {
                     summaryText.innerHTML = `<span class="text-red-300 font-bold"><i class="fas fa-exclamation-triangle"></i> 警告：有月份跌破了 100万 底线！请调整收支！</span>`;
                 } else {
-                    summaryText.innerHTML = `平稳防守中，目前最高攒到 <span class="font-bold text-yellow-300">${Math.round(highestCash).toLocaleString()}</span> 円，多打工冲刺买车！`;
+                    summaryText.innerHTML = `平稳防守中，目前最高攒到 <span class="font-bold text-yellow-300">${Math.round(highestCash).toLocaleString()}</span> 円，继续加油！`;
                 }
             }
 
-            // 触发防抖保存
-            scheduleSave();
+            // 【核心修复】：去掉一切等待延迟，算完瞬间执行保存。
+            performInstantSave();
         }
 
         window.onload = initBindings;
